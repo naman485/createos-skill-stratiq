@@ -5,19 +5,18 @@ RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /v
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files AND prisma schema (needed for postinstall)
 COPY package.json package-lock.json ./
-RUN npm ci
-
-# Copy prisma schema and generate client
 COPY prisma ./prisma
-RUN npx prisma generate
+
+# Install dependencies (postinstall runs prisma generate which needs the schema)
+RUN npm ci
 
 # Copy the rest of the source
 COPY . .
 
 # Build Next.js
-RUN npm run build
+RUN npx prisma generate && npm run build
 
 # Create uploads directory
 RUN mkdir -p uploads
