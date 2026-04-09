@@ -3,6 +3,7 @@ const nextConfig = {
   output: 'standalone',
   experimental: {
     serverComponentsExternalPackages: ['pdf-parse', 'pptxgenjs'],
+    instrumentationHook: true,
   },
   async headers() {
     return [
