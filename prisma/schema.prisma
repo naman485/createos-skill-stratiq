@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String         @id @default(uuid())
+  email        String         @unique
+  name         String
+  passwordHash String
+  role         String         @default("user")
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  briefs       Brief[]
+  reports      InsightReport[]
+  decks        Deck[]
+  auditLogs    AuditLog[]
+}
+
+model Brief {
+  id           String         @id @default(uuid())
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  filename     String
+  originalName String
+  fileSize     Int
+  mimeType     String
+  status       String         @default("uploaded") // uploaded, parsing, parsed, analyzing, analyzed, error
+  textContent  String?
+  pageCount    Int?
+  errorMessage String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  reports      InsightReport[]
+  decks        Deck[]
+
+  @@index([userId])
+}
+
+model InsightReport {
+  id          String   @id @default(uuid())
+  briefId     String
+  brief       Brief    @relation(fields: [briefId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  insights    String   // JSON array of InsightCard objects
+  trackFilter String?  // comma-separated tracks used to generate
+  cardCount   Int      @default(5)
+  status      String   @default("generating") // generating, completed, error
+  processingMs Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  decks       Deck[]
+
+  @@index([briefId])
+  @@index([userId])
+}
+
+model Deck {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  briefId     String?
+  brief       Brief?   @relation(fields: [briefId], references: [id], onDelete: SetNull)
+  reportId    String?
+  report      InsightReport? @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  title       String
+  templateId  String   @default("modern-dark")
+  slides      String   // JSON array of Slide objects
+  status      String   @default("generating") // generating, completed, error
+  filePath    String?  // path to generated PPTX
+  processingMs Int?
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([briefId])
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action       String   // upload_brief, analyze_brief, generate_deck, download_deck, etc.
+  resourceType String   // brief, report, deck
+  resourceId   String
+  metadata     String?  // JSON additional context
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([resourceType, resourceId])
+}

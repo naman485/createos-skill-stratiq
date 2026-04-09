@@ -1,0 +1,45 @@
+{
+  "name": "stratiq_analyze_brief",
+  "description": "Upload and analyze a marketing brief (PDF/DOCX up to 100MB) to extract 3-7 strategic insight cards tagged by track (creative, events, art, digital, strategy). Uses ZDR-compliant AI processing — zero data retention, NDA-safe. Returns structured insight cards with titles, summaries, page references, track tags, and confidence scores.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["analyze_brief", "generate_deck", "list_briefs", "list_decks"],
+        "description": "Action to perform"
+      },
+      "briefId": {
+        "type": "string",
+        "description": "Brief ID for analysis or deck generation"
+      },
+      "cardCount": {
+        "type": "number",
+        "description": "Number of insight cards to generate (3-7)",
+        "minimum": 3,
+        "maximum": 7,
+        "default": 5
+      },
+      "tracks": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Filter tracks: creative, events, art, digital, strategy"
+      },
+      "templateId": {
+        "type": "string",
+        "enum": ["modern-dark", "clean-light", "bold-color"],
+        "description": "Deck template style"
+      },
+      "title": {
+        "type": "string",
+        "description": "Deck title"
+      }
+    },
+    "required": ["action"]
+  },
+  "endpoint": "POST /api/briefs/{briefId}/analyze",
+  "pricing": {
+    "credits": 10,
+    "usd": 0.10
+  }
+}
