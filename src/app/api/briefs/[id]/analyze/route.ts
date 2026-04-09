@@ -177,6 +177,29 @@ export async function POST(
       },
     });
 
+    // --- Pre-flight: check API key before calling AI ---
+    if (!process.env.OPENROUTER_API_KEY) {
+      await prisma.insightReport.update({
+        where: { id: report.id },
+        data: { status: 'error' },
+      });
+      await prisma.brief.update({
+        where: { id: brief.id },
+        data: { status: 'error', errorMessage: 'OPENROUTER_API_KEY is not configured' },
+      });
+      console.error(`${method} ${routePath} 503 — OPENROUTER_API_KEY missing`);
+      return NextResponse.json(
+        {
+          success: false as const,
+          error: {
+            code: 'AI_CONFIG_ERROR',
+            message: 'AI service is not configured. Please set OPENROUTER_API_KEY in environment variables.',
+          },
+        },
+        { status: 503 },
+      );
+    }
+
     // --- Call AI ---
     let insights: InsightCard[];
     try {
@@ -214,6 +237,8 @@ export async function POST(
       });
 
       if (err instanceof AIError) {
+        const statusCode = err.code === 'TIMEOUT' ? 504 : 502;
+        console.error(`${method} ${routePath} ${statusCode} — AI_${err.code}: ${err.message}`);
         return NextResponse.json(
           {
             success: false as const,
@@ -222,10 +247,23 @@ export async function POST(
               message: `AI analysis failed: ${err.message}`,
             },
           },
-          { status: 502 },
+          { status: statusCode },
         );
       }
-      throw err;
+
+      // Catch-all for unexpected errors — ALWAYS return JSON
+      const message = err instanceof Error ? err.message : 'Unknown AI error';
+      console.error(`${method} ${routePath} 500 — unexpected AI error:`, err);
+      return NextResponse.json(
+        {
+          success: false as const,
+          error: {
+            code: 'AI_UNKNOWN_ERROR',
+            message: `AI analysis failed: ${message}`,
+          },
+        },
+        { status: 500 },
+      );
     }
 
     // --- Save results ---

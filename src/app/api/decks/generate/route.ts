@@ -244,6 +244,21 @@ export async function POST(
       );
     }
 
+    // --- Pre-flight: check API key before calling AI ---
+    if (!process.env.OPENROUTER_API_KEY) {
+      console.error(`[${method}] ${path} -> 503 — OPENROUTER_API_KEY missing`);
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'AI_CONFIG_ERROR',
+            message: 'AI service is not configured. Please set OPENROUTER_API_KEY in environment variables.',
+          },
+        },
+        { status: 503 },
+      );
+    }
+
     // --- Create deck record (generating status) ---
     const deckId = uuidv4();
     await prisma.deck.create({
