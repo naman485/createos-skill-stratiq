@@ -187,9 +187,10 @@ class ApiClient {
     title: string;
     slideCount: number;
   }): Promise<ApiResponse<DeckDetail>> {
+    const { template, ...rest } = options;
     return this.request<DeckDetail>("/api/decks/generate", {
       method: "POST",
-      body: JSON.stringify(options),
+      body: JSON.stringify({ ...rest, templateId: template }),
     });
   }
 
