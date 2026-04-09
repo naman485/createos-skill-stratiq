@@ -109,7 +109,7 @@ function NewDeckPageContent() {
       const brief = briefs.find((b) => b.id === selectedBriefId);
       if (brief) {
         setTitle(
-          `Strategy Deck - ${brief.originalName.replace(/\.[^.]+$/, "")}`
+          `Strategy Deck - ${(brief.originalName || brief.filename || 'Untitled').replace(/\.[^.]+$/, "")}`
         );
       }
     }
