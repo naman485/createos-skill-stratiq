@@ -11,7 +11,7 @@ import type { AICallOptions } from '@/lib/types';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4.6';
-const REQUEST_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 90_000;
 
 function getApiKey(): string {
   const key = process.env.OPENROUTER_API_KEY;

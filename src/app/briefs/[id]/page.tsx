@@ -122,10 +122,14 @@ export default function BriefDetailPage() {
   const latestReport = brief?.reports?.[brief.reports.length - 1];
   let insights: InsightCard[] = [];
   if (latestReport?.insights) {
-    try {
-      insights = JSON.parse(latestReport.insights);
-    } catch {
-      insights = [];
+    if (Array.isArray(latestReport.insights)) {
+      insights = latestReport.insights;
+    } else if (typeof latestReport.insights === 'string') {
+      try {
+        insights = JSON.parse(latestReport.insights);
+      } catch {
+        insights = [];
+      }
     }
   }
 
