@@ -1,4 +1,5 @@
 import { type NextAuthOptions } from "next-auth";
+import { type JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
@@ -66,7 +67,7 @@ export const authOptions: NextAuthOptions = {
         });
         if (!dbUser) {
           // User doesn't exist — invalidate the token to force re-login
-          return { ...token, id: undefined, role: undefined };
+          return {} as JWT;
         }
       }
       return token;
@@ -78,7 +79,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as { role: string }).role = token.role as string;
       } else {
         // No valid user — return empty session to trigger re-login
-        return { ...session, user: undefined } as typeof session;
+        return { ...session, user: undefined } as unknown as typeof session;
       }
       return session;
     },
