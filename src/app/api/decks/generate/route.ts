@@ -259,7 +259,7 @@ export async function POST(
       );
     }
 
-    // --- Create deck record (generating status) ---
+    // --- Create deck record (planning status) ---
     const deckId = uuidv4();
     await prisma.deck.create({
       data: {
@@ -274,118 +274,86 @@ export async function POST(
       },
     });
 
-    // --- AI: Plan the slide sequence ---
-    let slides: Slide[];
-    try {
-      await prisma.deck.update({
-        where: { id: deckId },
-        data: { status: 'planning' },
-      });
+    // --- Async background processing ---
+    // Return immediately with deckId so the client doesn't hit proxy timeout.
+    // The UI will poll GET /api/decks/:id for status: "ready" | "error".
+    void (async () => {
+      try {
+        // --- AI: Plan slides ---
+        const planResult = await callAIJson<DeckPlanningResponse>(
+          DECK_PLANNING_SYSTEM,
+          DECK_PLANNING_USER(insights, templateId, slideCount!),
+          { temperature: 0.4, maxTokens: 8192 },
+        );
 
-      const planResult = await callAIJson<DeckPlanningResponse>(
-        DECK_PLANNING_SYSTEM,
-        DECK_PLANNING_USER(insights, templateId, slideCount!),
-        { temperature: 0.4, maxTokens: 8192 },
-      );
+        let slides: Slide[] = planResult.slides.map((s, i) => ({ ...s, index: i }));
 
-      slides = planResult.slides;
+        await prisma.deck.update({
+          where: { id: deckId },
+          data: { status: 'rendering', slides: JSON.stringify(slides) },
+        });
 
-      // Ensure proper indexing
-      slides = slides.map((s, i) => ({ ...s, index: i }));
-    } catch (aiError) {
-      await prisma.deck.update({
-        where: { id: deckId },
-        data: {
-          status: 'error',
-          slides: JSON.stringify([]),
-        },
-      });
+        // --- Generate PPTX ---
+        const pptxBuffer = await generatePPTX(slides, templateId, title);
 
-      console.error(`[${method}] ${path} -> AI planning failed:`, aiError);
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'AI_ERROR',
-            message: 'Failed to plan slide sequence. Please try again.',
+        // --- Save to disk ---
+        const uploadsDir = join(process.cwd(), 'uploads', 'decks');
+        await mkdir(uploadsDir, { recursive: true });
+        const filename = `${deckId}.pptx`;
+        const filePath = join(uploadsDir, filename);
+        await writeFile(filePath, pptxBuffer);
+
+        // --- Mark ready ---
+        const processingMs = Date.now() - startMs;
+        await prisma.deck.update({
+          where: { id: deckId },
+          data: {
+            status: 'ready',
+            slides: JSON.stringify(slides),
+            filePath: `uploads/decks/${filename}`,
+            processingMs,
           },
-        },
-        { status: 502 },
-      );
-    }
+        });
 
-    // --- Generate PPTX ---
-    let pptxBuffer: Buffer;
-    try {
-      await prisma.deck.update({
-        where: { id: deckId },
-        data: { status: 'rendering' },
-      });
-
-      pptxBuffer = await generatePPTX(slides, templateId, title);
-    } catch (genError) {
-      await prisma.deck.update({
-        where: { id: deckId },
-        data: {
-          status: 'error',
-          slides: JSON.stringify(slides),
-        },
-      });
-
-      console.error(`[${method}] ${path} -> PPTX generation failed:`, genError);
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'GENERATION_ERROR',
-            message: 'Failed to render PPTX file. Please try again.',
+        await prisma.auditLog.create({
+          data: {
+            userId,
+            action: 'generate_deck',
+            resourceType: 'deck',
+            resourceId: deckId,
+            metadata: JSON.stringify({
+              templateId,
+              slideCount: slides.length,
+              briefId: resolvedBriefId,
+              reportId: resolvedReportId,
+              processingMs,
+            }),
           },
-        },
-        { status: 500 },
-      );
-    }
+        });
 
-    // --- Save PPTX to disk ---
-    const uploadsDir = join(process.cwd(), 'uploads', 'decks');
-    await mkdir(uploadsDir, { recursive: true });
+        console.log(
+          `[async] deck=${deckId} ready (${processingMs}ms) slides=${slides.length}`,
+        );
+      } catch (bgError) {
+        const message = bgError instanceof Error ? bgError.message : 'Unknown error';
+        console.error(`[async] deck=${deckId} failed:`, bgError);
+        try {
+          await prisma.deck.update({
+            where: { id: deckId },
+            data: { status: 'error', errorMessage: message },
+          });
+        } catch (dbError) {
+          console.error(`[async] failed to update deck=${deckId} status:`, dbError);
+        }
+      }
+    })();
 
-    const filename = `${deckId}.pptx`;
-    const filePath = join(uploadsDir, filename);
-    await writeFile(filePath, pptxBuffer);
-
-    // --- Update deck record ---
-    const processingMs = Date.now() - startMs;
-    await prisma.deck.update({
-      where: { id: deckId },
-      data: {
-        status: 'ready',
-        slides: JSON.stringify(slides),
-        filePath: `uploads/decks/${filename}`,
-        processingMs,
-      },
-    });
-
-    // --- Audit log ---
-    await prisma.auditLog.create({
-      data: {
-        userId,
-        action: 'generate_deck',
-        resourceType: 'deck',
-        resourceId: deckId,
-        metadata: JSON.stringify({
-          templateId,
-          slideCount: slides.length,
-          briefId: resolvedBriefId,
-          reportId: resolvedReportId,
-          processingMs,
-        }),
-      },
-    });
-
+    const acceptedMs = Date.now() - startMs;
     console.log(
-      `[${method}] ${path} -> 201 (${processingMs}ms) deck=${deckId} slides=${slides.length}`,
+      `[${method}] ${path} -> 202 (${acceptedMs}ms) deck=${deckId} (async)`,
     );
 
+    // Return 202 Accepted — deck is being generated in the background.
     return NextResponse.json(
       {
         success: true,
@@ -393,21 +361,17 @@ export async function POST(
           id: deckId,
           title,
           templateId,
-          status: 'ready',
-          slideCount: slides.length,
-          slides: slides.map((s) => ({
-            index: s.index,
-            type: s.type,
-            title: s.title,
-          })),
-          filePath: `uploads/decks/${filename}`,
+          status: 'planning',
+          slideCount: 0,
+          slides: [],
+          filePath: null,
           briefId: resolvedBriefId,
           reportId: resolvedReportId,
           createdAt: new Date().toISOString(),
         },
-        meta: { processingMs },
+        meta: { processingMs: acceptedMs, async: true },
       },
-      { status: 201 },
+      { status: 202 },
     );
   } catch (error) {
     const processingMs = Date.now() - startMs;

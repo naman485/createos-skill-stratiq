@@ -70,18 +70,29 @@ export default function DeckDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deckId]);
 
-  // Poll while generating
+  // Poll while deck is being generated
   React.useEffect(() => {
-    if (!deck || deck.status !== "generating") return;
+    if (!deck) return;
+    const isInProgress =
+      deck.status === "planning" ||
+      deck.status === "rendering" ||
+      deck.status === "generating";
+    if (!isInProgress) return;
 
     const interval = setInterval(async () => {
       const res = await apiClient.getDeck(deckId);
       if (res.success) {
         setDeck(res.data);
-        if (res.data.status !== "generating") {
+        const stillInProgress =
+          res.data.status === "planning" ||
+          res.data.status === "rendering" ||
+          res.data.status === "generating";
+        if (!stillInProgress) {
           clearInterval(interval);
-          if (res.data.status === "completed") {
+          if (res.data.status === "ready" || res.data.status === "completed") {
             toast.success("Deck generation complete!");
+          } else if (res.data.status === "error") {
+            toast.error("Deck generation failed");
           }
         }
       }
@@ -92,10 +103,14 @@ export default function DeckDetailPage() {
 
   let slides: Slide[] = [];
   if (deck?.slides) {
-    try {
-      slides = JSON.parse(deck.slides);
-    } catch {
-      slides = [];
+    if (Array.isArray(deck.slides)) {
+      slides = deck.slides;
+    } else if (typeof deck.slides === 'string') {
+      try {
+        slides = JSON.parse(deck.slides);
+      } catch {
+        slides = [];
+      }
     }
   }
 
@@ -160,7 +175,7 @@ export default function DeckDetailPage() {
                     </div>
                   </div>
 
-                  {deck.status === "completed" && deck.filePath && (
+                  {(deck.status === "ready" || deck.status === "completed") && deck.filePath && (
                     <Button
                       className="gap-2"
                       onClick={async () => {
@@ -181,12 +196,18 @@ export default function DeckDetailPage() {
             </Card>
 
             {/* Generating state */}
-            {deck.status === "generating" && (
+            {(deck.status === "generating" ||
+              deck.status === "planning" ||
+              deck.status === "rendering") && (
               <Card className="border-primary/20">
                 <CardContent className="p-8 text-center">
                   <Loader2 className="h-8 w-8 text-primary animate-spin mx-auto mb-4" />
                   <h3 className="font-semibold mb-1">
-                    Generating your deck...
+                    {deck.status === "planning"
+                      ? "Planning slide structure..."
+                      : deck.status === "rendering"
+                        ? "Rendering PPTX file..."
+                        : "Generating your deck..."}
                   </h3>
                   <p className="text-sm text-muted-foreground">
                     AI is building your slides. This usually takes 30-60 seconds.
@@ -214,7 +235,7 @@ export default function DeckDetailPage() {
             )}
 
             {/* Slides */}
-            {deck.status === "completed" && slides.length > 0 && (
+            {(deck.status === "ready" || deck.status === "completed") && slides.length > 0 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">
                   Slides ({slides.length})

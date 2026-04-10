@@ -139,7 +139,7 @@ function NewDeckPageContent() {
       clearTimeout(timer2);
 
       if (res.success) {
-        toast.success("Deck generated!");
+        toast.success("Deck generation started");
         router.push(`/decks/${res.data.id}`);
       } else {
         toast.error("Generation failed", { description: res.error.message });

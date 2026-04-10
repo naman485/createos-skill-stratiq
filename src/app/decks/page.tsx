@@ -120,7 +120,7 @@ export default function DecksPage() {
                       <Clock className="h-3 w-3" />
                       {formatDate(deck.createdAt)}
                     </div>
-                    {deck.status === "completed" && deck.filePath && (
+                    {(deck.status === "ready" || deck.status === "completed") && deck.filePath && (
                       <Button
                         variant="ghost"
                         size="sm"

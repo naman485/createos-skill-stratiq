@@ -72,8 +72,9 @@ model Deck {
   title       String
   templateId  String   @default("modern-dark")
   slides      String   // JSON array of Slide objects
-  status      String   @default("generating") // generating, completed, error
+  status      String   @default("planning") // planning, rendering, ready, error
   filePath    String?  // path to generated PPTX
+  errorMessage String?
   processingMs Int?
   version     Int      @default(1)
   createdAt   DateTime @default(now())
